@@ -99,7 +99,7 @@ export default async function questionsRoutes(fastify, options) {
     }
   }, async function (request, reply) {
     try {
-      const { menuText, role, area, language = 'es', questionCount = 20, categories } = request.body;
+      const { menuText, role, area, language = 'es', questionCount = 20, categories, questionTypes } = request.body;
 
       // Validar rol
       const roleCategories = getRoleCategories(role);
@@ -160,7 +160,8 @@ export default async function questionsRoutes(fastify, options) {
         language,
         questionCount,
         categoriesToUse,
-        area
+        area,
+        questionTypes
       );
 
       // Verificar que se generó el número correcto de preguntas

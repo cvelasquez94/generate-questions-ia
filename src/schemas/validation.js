@@ -12,8 +12,8 @@ export const generateQuestionsSchema = z.object({
     role: z.enum(getAllRoles(), {
       errorMap: () => ({ message: `Role must be one of: ${getAllRoles().join(', ')}` })
     }),
-    language: z.enum(['es', 'en', 'pt'], {
-      errorMap: () => ({ message: 'Language must be one of: es, en, pt' })
+    language: z.enum(['es', 'en', 'pt', 'fr'], {
+      errorMap: () => ({ message: 'Language must be one of: es, en, pt, fr' })
     }).default('es'),
     questionCount: z.number().int().min(10, 'Minimum 10 questions').max(200, 'Maximum 200 questions').default(20),
     categories: z.array(z.string()).optional(),

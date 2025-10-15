@@ -155,7 +155,7 @@ class OpenAIService {
     return menuText;
   }
 
-  async generateQuestions(menuText, role, language, questionCount, categories, area = null) {
+  async generateQuestions(menuText, role, language, questionCount, categories, area = null, questionTypes = null) {
     try {
       logger.info(`Generating ${questionCount} questions for role: ${role} in language: ${language}`);
 
@@ -164,7 +164,7 @@ class OpenAIService {
       // Limpiar y ajustar contenido para límites de tokens
       let cleanedMenuText = this.cleanMenuText(menuText);
       const systemPrompt = this.getSystemPrompt(language);
-      const tempPrompt = this.buildPrompt('PLACEHOLDER', roleInfo, language, questionCount, categories, area);
+      const tempPrompt = this.buildPrompt('PLACEHOLDER', roleInfo, language, questionCount, categories, area, questionTypes);
 
       // Aumentado el umbral para mantener más contexto
       if (this.estimateTokens(cleanedMenuText) > 50000) {
@@ -177,10 +177,10 @@ class OpenAIService {
       // Si se solicitan más de 30 preguntas, dividir en lotes (reducido de 50)
       if (questionCount > 30) {
         logger.info('Large question count detected, using batch processing');
-        return await this.generateQuestionsBatch(processedMenuText, roleInfo, role, language, questionCount, categories, area);
+        return await this.generateQuestionsBatch(processedMenuText, roleInfo, role, language, questionCount, categories, area, questionTypes);
       }
 
-      const prompt = this.buildPrompt(processedMenuText, roleInfo, language, questionCount, categories, area);
+      const prompt = this.buildPrompt(processedMenuText, roleInfo, language, questionCount, categories, area, questionTypes);
 
       // Aumentado max_tokens significativamente para más preguntas
       const maxTokens = Math.min(16000, Math.max(2000, questionCount * 100));
@@ -219,7 +219,7 @@ class OpenAIService {
     }
   }
 
-  async generateQuestionsBatch(originalMenuText, roleInfo, role, language, totalQuestions, categories, area = null) {
+  async generateQuestionsBatch(originalMenuText, roleInfo, role, language, totalQuestions, categories, area = null, questionTypes = null) {
     // Aplicar limpieza también en modo lote
     let menuText = this.cleanMenuText(originalMenuText);
     if (this.estimateTokens(menuText) > 50000) {
@@ -240,7 +240,7 @@ class OpenAIService {
       logger.info(`Attempt ${attempts}: Processing batch for ${questionsInBatch} questions (current total: ${allQuestions.length}/${totalQuestions})`);
 
       try {
-        const prompt = this.buildPrompt(menuText, roleInfo, language, questionsInBatch, categories, area);
+        const prompt = this.buildPrompt(menuText, roleInfo, language, questionsInBatch, categories, area, questionTypes);
 
         const completion = await this.openai.chat.completions.create({
           model: 'gpt-4-turbo-preview', // Cambiado a GPT-4 Turbo
@@ -329,7 +329,7 @@ IMPORTANT: Votre réponse doit être UNIQUEMENT un tableau JSON valide. N'inclue
     return prompts[language] || prompts.es;
   }
 
-  buildPrompt(menuText, roleInfo, language, questionCount, categories, area = null) {
+  buildPrompt(menuText, roleInfo, language, questionCount, categories, area = null, questionTypes = null) {
     const categoryList = categories.join(', ');
 
     // Información específica para cocinero especializado
@@ -346,6 +346,28 @@ DESCRIPCIÓN DEL ÁREA: ${areaConfig.description}`;
       }
     }
 
+    // Determinar qué tipos de preguntas generar
+    let questionTypeInstructions = '';
+    if (questionTypes && questionTypes.length > 0) {
+      const typesMap = {
+        multiple_choice: 'opción múltiple (4 opciones)',
+        yes_no: 'verdadero/falso (2 opciones: Sí/No o Verdadero/Falso)'
+      };
+
+      if (questionTypes.length === 1) {
+        // Solo un tipo solicitado
+        const typeDesc = typesMap[questionTypes[0]];
+        questionTypeInstructions = `\n- TODAS las ${questionCount} preguntas deben ser de tipo ${typeDesc}`;
+      } else {
+        // Múltiples tipos solicitados - distribuir equitativamente
+        const typesDesc = questionTypes.map(t => typesMap[t]).join(' y ');
+        questionTypeInstructions = `\n- Distribuir las ${questionCount} preguntas equitativamente entre los tipos: ${typesDesc}`;
+      }
+    } else {
+      // Si no se especifica, mezclar tipos
+      questionTypeInstructions = `\n- Mezclar tipos: opción múltiple (4 opciones) y verdadero/falso (2 opciones)`;
+    }
+
     const prompts = {
       es: `IMPORTANTE: Debes generar EXACTAMENTE ${questionCount} preguntas. No menos, no más.
 
@@ -356,11 +378,14 @@ ${menuText}
 
 REQUISITOS:
 - Generar EXACTAMENTE ${questionCount} preguntas únicas
-- Categorías a cubrir: ${categoryList}
-- Tipos: multiple_choice (4 opciones) o yes_no (2 opciones)
+- Categorías a cubrir: ${categoryList}${questionTypeInstructions}
 - Niveles de dificultad: facil, medio, dificil
 - Las preguntas deben ser específicas al contenido proporcionado${specialInstructions}
 - Cada pregunta debe tener opciones con una correcta marcada
+
+IMPORTANTE - TIPOS DE PREGUNTAS:
+- "multiple_choice": Debe tener exactamente 4 opciones
+- "yes_no": Debe tener exactamente 2 opciones (Sí/No o Verdadero/Falso)
 
 FORMATO DE RESPUESTA - SOLO JSON (sin texto adicional):
 [{"question_text":"...","question_type":"multiple_choice|yes_no","category":"...","difficulty":"facil|medio|dificil","options":[{"text":"...","correct":true/false}]}]`,

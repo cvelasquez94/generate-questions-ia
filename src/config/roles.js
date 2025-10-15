@@ -119,7 +119,8 @@ export const DIFFICULTY_LEVELS = {
 export const SUPPORTED_LANGUAGES = {
   es: 'Español',
   en: 'English',
-  pt: 'Português'
+  pt: 'Português',
+  fr: 'Français'
 };
 
 export const getRoleCategories = (role, area = null) => {
